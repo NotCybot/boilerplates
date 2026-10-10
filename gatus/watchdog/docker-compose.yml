@@ -1,0 +1,24 @@
+# Runs on pi01 (192.0.2.12), NOT on portainer-pi. That is the whole point.
+# No Traefik route: reachable at http://192.0.2.12:8080, which is exactly the
+# situation this instance exists for.
+services:
+  gatus-watchdog:
+    image: ghcr.io/twin/gatus:v5.37.0@sha256:094eb186e55235db367e90e9d56140e5897b7044c41de23cde4cc18e6da1242e
+    container_name: gatus-watchdog
+    restart: unless-stopped
+    environment:
+      GATUS_CONFIG_PATH: /config/config.yaml
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:?required}
+    volumes:
+      - ${GATUS_CONFIG_DIR:-./}:/config:ro
+      - data:/data
+    dns:
+      - 192.0.2.12 # dns02 first: dns01 shares its fate with the host being watched
+      - 192.0.2.11
+    ports:
+      - "8080:8080"
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  data:

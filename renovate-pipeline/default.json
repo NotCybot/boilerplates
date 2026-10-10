@@ -1,0 +1,66 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Shared preset for all homelab repos. Extend with: local>homelab/renovate-pipeline",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    ":enableVulnerabilityAlertsWithLabel('security')",
+    ":preserveSemverRanges",
+    ":rebaseStalePrs",
+    "group:recommended",
+    "docker:pinDigests"
+  ],
+  "labels": ["renovate"],
+  "baseBranchPatterns": ["main"],
+  "gitlabci": {
+    "description": "Component includes reference $CI_SERVER_FQDN, which Renovate cannot expand and resolves against gitlab.com, so every lookup of components/* failed",
+    "registryAliases": {
+      "$CI_SERVER_FQDN": "gitlab.pve01.local.example.com"
+    }
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "CI/CD components pin their images as spec input defaults (default: image:tag@sha256:...). The gitlabci manager only reads .gitlab-ci.yml, so without this nothing updates them",
+      "managerFilePatterns": ["/^templates/.+\\.ya?ml$/"],
+      "matchStrings": [
+        "(?:image|default):\\s*[\"']?(?<depName>[^\\s:@\"'$]+):(?<currentValue>[^\\s@\"']+)@(?<currentDigest>sha256:[a-f0-9]{64})"
+      ],
+      "datasourceTemplate": "docker"
+    }
+  ],
+  "docker-compose": {
+    "managerFilePatterns": [
+      "/(^|/)(?:docker-)?compose[^/]*\\.ya?ml$/",
+      "/(.*)yaml$/"
+    ]
+  },
+  "separateMinorPatch": true,
+  "platformAutomerge": true,
+  "ignoreTests": false,
+  "stopUpdatingLabel": "StopRenovate",
+  "packageRules": [
+    {
+      "description": "Everything but major automerges, the repo exclusion below still wins. Every repo runs the secret scan in its MR pipeline and requires it to pass, so Renovate hands the merge to GitLab ('merge when pipeline succeeds') instead of merging via the API",
+      "matchUpdateTypes": ["minor", "patch", "pin", "pinDigest", "digest"],
+      "automerge": true
+    },
+    {
+      "description": "Major updates require review",
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "reviewers": ["your-gitlab-user"]
+    },
+    {
+      "description": "Traefik and Authentik carry the whole homelab, a bad update locks us out of Grafana and everything else. open-webui is on 0.x, where a patch bump can carry what a stable project would call a minor. Nothing merges unattended in any of them",
+      "matchRepositories": [
+        "homelab/traefik",
+        "homelab/authentik",
+        "homelab/openwebui"
+      ],
+      "automerge": false,
+      "reviewers": ["your-gitlab-user"]
+    }
+  ]
+}

@@ -1,0 +1,84 @@
+api:
+  dashboard: true
+  debug: true
+entryPoints:
+  metrics:
+    address: ":8082"
+  http:
+    address: ":80"
+    http:
+#      middlewares:
+#        - cloudflarewarp@file
+#        - crowdsecbouncer@file
+      redirections:
+        entryPoint:
+          to: https
+          scheme: https
+  https:
+    address: ":443"
+    http:
+      middlewares:
+         - secured@file
+#        - cloudflarewarp@file
+#        - crowdsec-bouncer@file
+#  minetcp:
+#    address: ":25565"
+#
+  wazuh-agent:
+    address: ":1514"
+
+  wazuh-enroll:
+    address: ":1515"
+providers:
+  docker:
+    #endpoint: "unix:///var/run/docker.sock"
+    endpoint: "tcp://socket-proxy-old:2375"
+    exposedByDefault: false
+  file:
+    filename: /config.yml
+    watch: true
+certificatesResolvers:
+  cloudflare:
+    acme:
+      email: admin@example.com
+      storage: acme.json
+      dnsChallenge:
+        provider: cloudflare
+        #disablePropagationCheck: true # uncomment this if you have issues pulling certificates through cloudflare, By setting this flag to true disables the need to wait for the propagation of the TXT record to all authoritative name servers.
+        resolvers:
+          - "1.1.1.1:53"
+          - "1.0.0.1:53"
+#log:
+#  level: "DEBUG"
+#  filePath: "/var/log/traefik/traefik.log"
+#  maxSize: 100        # MB pro Datei, dann wird rotiert
+#  maxBackups: 3      # so viele alte Dateien behalten
+#  maxAge: 7          # Tage, danach löschen
+#  compress: true     # alte rotierte Dateien gzippen
+
+#accessLog:
+#  filePath: "/var/log/traefik/access.log"
+#  bufferingSize: 100
+
+log:
+  level: "DEBUG"
+  format: "json"
+#  filePath: "/traefik.log"
+
+accessLog:
+   format: "json"
+#  filePath: "/access.loy"
+   bufferingSize: 100
+
+metrics:
+  prometheus:
+    entryPoint: metrics
+    addEntryPointsLabels: true
+    addServicesLabels: true
+    addRoutersLabels: true
+
+experimental:
+  plugins:
+    cloudflarewarp:
+      moduleName: "github.com/BetterCorp/cloudflarewarp"
+      version: "v1.3.3"

@@ -1,0 +1,179 @@
+services:
+  prometheus:
+    image: prom/prometheus:v3.15.0@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 2g
+    pids_limit: 256
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - /etc/dockercompose/prometheus:/etc/prometheus
+      - /etc/dockercompose/prometheus-data:/prometheus
+    command: "--config.file=/etc/prometheus/prometheus.yml"
+    restart: unless-stopped
+    networks:
+      - default
+      - proxy
+
+  grafana:
+    image: grafana/grafana:13.2.3@sha256:b28bae15e219c998fb0e0424ed724930cc61b1f61fb404d47c862f9a23f9e572
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 1g
+    pids_limit: 512
+    container_name: grafana
+    ports:
+      - "9091:3000"
+    environment:
+      GF_AUTH_GENERIC_OAUTH_ENABLED: "true"
+      GF_AUTH_GENERIC_OAUTH_NAME: "authentik"
+      GF_AUTH_GENERIC_OAUTH_CLIENT_ID: ${GF_AUTH_GENERIC_OAUTH_CLIENT_ID}
+      GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET: ${GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET}
+      GF_AUTH_GENERIC_OAUTH_SCOPES: "openid profile email"
+      GF_AUTH_GENERIC_OAUTH_AUTH_URL: ${GF_AUTH_GENERIC_OAUTH_AUTH_URL}
+      GF_AUTH_GENERIC_OAUTH_TOKEN_URL: ${GF_AUTH_GENERIC_OAUTH_TOKEN_URL}
+      GF_AUTH_GENERIC_OAUTH_API_URL: ${GF_AUTH_GENERIC_OAUTH_API_URL}
+      GF_AUTH_SIGNOUT_REDIRECT_URL: ${GF_AUTH_SIGNOUT_REDIRECT_URL}
+        # Optionally enable auto-login (bypasses Grafana login screen)
+      GF_AUTH_OAUTH_AUTO_LOGIN: "false"
+        # Optionally map user groups to Grafana roles
+      GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_PATH: "contains(groups[*], 'Grafana Admin') && 'Admin' || contains(groups[*], 'Grafana Editors') && 'Editor' || 'Viewer'"
+        # Required if Grafana is running behind a reverse proxy
+      GF_SERVER_ROOT_URL: ${GF_SERVER_ROOT_URL}
+    volumes:
+      - /etc/dockercompose/grafana-data:/var/lib/grafana
+      - /etc/dockercompose/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - /etc/dockercompose/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - /etc/dockercompose/grafana/dashboards:/etc/grafana/dashboards:ro
+    restart: unless-stopped
+    networks:
+      - default
+      - proxy
+
+  loki:
+    image: grafana/loki:3.7.8@sha256:1107dd5274e0ada47e42472b7a7e71f3b2a2fe878878108f3e2f9e51528f0193
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 1g
+    pids_limit: 256
+    container_name: loki
+    command: "-config.file=/etc/loki/loki.yml"
+    volumes:
+      - /etc/dockercompose/loki:/etc/loki:ro
+      - /etc/dockercompose/loki-data:/loki
+    restart: unless-stopped
+    networks:
+      - default
+
+  alloy:
+    image: grafana/alloy:v1.20.1@sha256:2aa2099af76c0098d4af7a4d6e48f86cb66dc1a000222ad927a1c67c6542d13f
+    security_opt:
+      - no-new-privileges:true
+    # alloy user of the image plus the host's docker group for the socket.
+    user: "473:117"
+    cap_drop:
+      - ALL
+    mem_limit: 512m
+    pids_limit: 256
+    container_name: alloy
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    environment:
+      # Label on every log from this Docker host. Use a different value on a second host.
+      - ALLOY_HOST=${ALLOY_HOST:-pve01-docker}
+    volumes:
+      - /etc/dockercompose/alloy:/etc/alloy:ro
+      - /etc/dockercompose/alloy-data:/var/lib/alloy/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+    restart: unless-stopped
+    networks:
+      - default
+
+  node_exporter:
+    image: quay.io/prometheus/node-exporter:v1.12.1@sha256:1b4e4438faca4dd7e001dd445d161a4a2091b0fededa84093b3a8dfeae1f1be0
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 128m
+    pids_limit: 128
+    container_name: node_exporter
+    command: "--path.rootfs=/host"
+    pid: host
+    restart: unless-stopped
+    volumes:
+      - /:/host:ro,rslave
+    networks:
+      - default
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.55.1@sha256:3de2bd5203120b866d74a9b283b2ffb8ec382fbf9dc321814700c6ea6f44ec57     
+    mem_limit: 512m
+    pids_limit: 256
+    container_name: cadvisor
+   # ports:
+   #  - 8080:8080
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    devices:
+      - /dev/kmsg
+    privileged: true
+    restart: unless-stopped
+    networks:
+      - default
+
+  alertmanager:
+    image: prom/alertmanager:v0.34.1@sha256:e9733bafb1bdef9b00e25a21f8f99dc26a22224bf16641ad754d1649f4c3357a
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 128m
+    pids_limit: 128
+    container_name: alertmanager
+    volumes:
+      - /etc/dockercompose/alertmanager:/etc/alertmanager
+    command: 
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--web.external-url=https://grafana.pve01.local.example.com"
+    restart: unless-stopped
+    networks:
+      - default
+
+  alertmanager-discord:
+    image: ghcr.io/rogerrum/alertmanager-discord:1.0.7@sha256:bb4bcb893dacca8735bd634b0796f0a1b3ef05e641f8a7b4921f7d0e5a17ee3e
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 128m
+    pids_limit: 128
+    container_name: alertmanager-discord
+    environment:
+      - DISCORD_WEBHOOK=${DISCORD_WEBHOOK}
+      - DISCORD_USERNAME=Grafana Alerts
+      - LISTEN_ADDRESS=0.0.0.0:9094
+      - VERBOSE=${VERBOSE}
+    restart: unless-stopped
+    networks:
+      - default
+
+networks:
+  proxy:
+    external: true

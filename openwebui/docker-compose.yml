@@ -1,0 +1,33 @@
+services:
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:v0.11.3@sha256:41daa0cf2561a5d4c8d1ff31ee2a98d93ab4d3ac2605cac69366ff6a3374a933
+    networks:
+      - proxy
+    container_name: open-webui
+#    ports:
+#      - "3000:8080"
+    volumes:
+      - /etc/dockercompose/openweb-ui:/app/backend/data
+    environment:
+      OAUTH_CLIENT_ID: ${OAUTH_CLIENT_ID}
+      OAUTH_CLIENT_SECRET: ${OAUTH_CLIENT_SECRET}
+      OAUTH_PROVIDER_NAME: ${OAUTH_PROVIDER_NAME}
+      OPENID_PROVIDER_URL: ${OPENID_PROVIDER_URL}
+      OPENID_REDIRECT_URI: ${OPENID_REDIRECT_URI}
+      WEBUI_URL: ${WEBUI_URL}
+      ENABLE_OAUTH_SIGNUP: ${ENABLE_OAUTH_SIGNUP}
+      ENABLE_LOGIN_FORM: ${ENABLE_LOGIN_FORM}
+      OAUTH_MERGE_ACCOUNTS_BY_EMAIL: ${OAUTH_MERGE_ACCOUNTS_BY_EMAIL}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.chat.entrypoints=https"
+      - "traefik.http.routers.chat.rule=Host(`chat.pve01.local.example.com`)"
+      - "traefik.http.routers.chat.tls=true"
+      - "traefik.http.routers.chat.tls.certresolver=cloudflare"
+      - "traefik.http.routers.chat.service=chat"
+      - "traefik.http.services.chat.loadbalancer.server.port=8080"
+      - "traefik.docker.network=proxy"
+
+networks: 
+  proxy:
+    external: true

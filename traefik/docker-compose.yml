@@ -1,0 +1,141 @@
+version: '3'
+
+services:
+  socket-proxy:
+    image: tecnativa/docker-socket-proxy:v0.4.2@sha256:1f3a6f303320723d199d2316a3e82b2e2685d86c275d5e3deeaf182573b47476
+    mem_limit: 128m
+    pids_limit: 128
+    container_name: socket-proxy-old
+    restart: unless-stopped
+    environment:
+      # nur das erlauben, was Traefik braucht:
+      CONTAINERS: 1
+      SERVICES: 1
+      NETWORKS: 1
+      TASKS: 1          # für Swarm; in Compose oft egal
+      INFO: 1
+      VERSION: 1
+
+      # alles andere explizit sperren:
+      AUTH: 0
+      PING: 1
+      BUILD: 0
+      COMMIT: 0
+      CONFIGS: 0
+      DISTRIBUTION: 1
+      EVENTS: 1
+      EXEC: 0
+      IMAGES: 0
+      NODES: 0
+      PLUGINS: 0
+      SECRETS: 0
+      SESSION: 0
+      SWARM: 0
+      SYSTEM: 0
+      VOLUMES: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - traefik-internal
+    # optional extra-hardening:
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /run
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+  
+  traefik:
+    image: traefik:v3.7.11@sha256:5203c3f39ca70de6790d964624e042463ffbd57715bc82be155cf224c0dd5144
+    mem_limit: 512m
+    pids_limit: 256
+    container_name: traefik2.0-old
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /plugins-storage # plugins are downloaded here on start
+    depends_on: 
+      - socket-proxy
+    networks:
+      - traefik-internal
+      - proxy
+    ports:
+      - 80:80
+      - 443:443
+      - 1515:1515 #Wazuh
+      - 1514:1514 #Wazuh
+    environment:
+      - CF_API_EMAIL=${CF_API_EMAIL} # Your Cloudflare E-Mail
+      - CF_DNS_API_TOKEN=${CF_DNS_API_TOKEN} # Your Cloudfalre API Token
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      #- /etc/dockercompose/traefik/arr-stack.yml:/arr-stack.yml:ro
+      - /etc/dockercompose/traefik/data/traefik.yml:/traefik.yml:ro
+      - /etc/dockercompose/traefik/data/acme.json:/acme.json
+      - /etc/dockercompose/traefik/config.yml:/config.yml:ro
+      #- traefik-logs:/var/log/traefik
+      #- /var/run/docker.sock:/var/run/docker.sock:ro
+    labels:
+
+      - "com.centurylinklabs.watchtower.enable=false"
+      - "traefik.enable=true"
+      - "traefik.http.routers.traefik.entrypoints=http"
+      - "traefik.http.routers.traefik.tls.certresolver=cloudflare"
+      - "traefik.http.routers.traefik.rule=Host(`traefik-dashboard-internal.pve01.local.example.com`)"
+      - "traefik.http.middlewares.traefik-auth.basicauth.users=admin:$$apr1$$CHANGEME" # generate: htpasswd -nb admin <password>, then double every $
+      - "traefik.http.middlewares.traefik-https-redirect.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.sslheader.headers.customrequestheaders.X-Forwarded-Proto=https"
+      - "traefik.http.routers.traefik.middlewares=traefik-https-redirect"
+      - "traefik.http.routers.traefik-secure.entrypoints=https"
+      - "traefik.http.routers.traefik-secure.rule=Host(`traefik-dashboard-internal.pve01.local.example.com`)"
+      - "traefik.http.routers.traefik-secure.middlewares=traefik-auth"
+      - "traefik.http.routers.traefik-secure.tls=true"
+      - "traefik.http.routers.traefik-secure.tls.certresolver=cloudflare"
+#      - "traefik.http.routers.traefik-secure.tls.domains[0].main=example.org"
+#      - "traefik.http.routers.traefik-secure.tls.domains[0].sans=*.example.org"
+#      - "traefik.http.routers.traefik-secure.tls.domains[1].main=local.example.org"
+#      - "traefik.http.routers.traefik-secure.tls.domains[1].sans=*.local.example.org"
+#      - "traefik.http.routers.traefik-secure.tls.domains[0].main=pve01.local.example.com"
+#      - "traefik.http.routers.traefik-secure.tls.domains[0].sans=*.pve01.local.example.com"
+      - "traefik.docker.network=proxy"
+      - "traefik.http.routers.traefik-secure.service=api@internal"
+
+#    env_file:
+#      - /etc/dockercompose/env/variables.env
+
+  error-pages:
+    image: nginx:alpine@sha256:62ff2089abf5a9ed33bd232895bef5e22f7bb4b200675cec49a5ebc48e3d4ac8
+    mem_limit: 128m
+    pids_limit: 128
+    container_name: error-pages
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+    networks:
+      - proxy
+    volumes:
+      - /etc/dockercompose/traefik/error-pages/html:/usr/share/nginx/html:ro
+      - /etc/dockercompose/traefik/error-pages/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+
+networks:
+  traefik-internal:
+    internal: true
+  proxy:
+    external: true
+#volumes:
+#  traefik-logs:

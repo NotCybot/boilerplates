@@ -1,0 +1,29 @@
+version: '3'
+services:
+  tautulli:
+    image: tautulli/tautulli:v2.18.2@sha256:1b5875fe3193d450a62e7b438eb6701195c841f14f3dcb962e545eda42d3696f
+    container_name: tautulli
+    networks:
+      proxy:
+    restart: unless-stopped
+    volumes:
+      - /etc/dockercompose/tautulli:/config
+    environment:
+      #- PUID=<uid>
+      #- PGID=<gid>
+      - TZ=Europe/Berlin
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.tautulli-secure.entrypoints=https"
+      - "traefik.http.routers.tautulli-secure.rule=Host(`tautulli.pve01.local.example.com`)"
+      - "traefik.http.routers.tautulli-secure.tls=true"
+      - "traefik.http.routers.tautulli-secure.tls.certresolver=cloudflare"
+      - "traefik.http.routers.tautulli-secure.service=tautulli"
+      - "traefik.http.services.tautulli.loadbalancer.server.port=8181"
+      - "traefik.docker.network=proxy"
+    #ports:
+    #  - 8181:8181
+      
+networks:
+  proxy:
+    external: true

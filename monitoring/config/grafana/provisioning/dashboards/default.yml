@@ -1,0 +1,15 @@
+apiVersion: 1
+
+providers:
+  - name: homelab
+    type: file
+    # Dashboards live outside /var/lib/grafana so this mount does not nest
+    # inside the Grafana data volume.
+    options:
+      path: /etc/grafana/dashboards
+      foldersFromFilesStructure: false
+    folder: Homelab
+    disableDeletion: false
+    # Edits in the UI survive until the next reload, then the file wins again.
+    allowUiUpdates: false
+    updateIntervalSeconds: 60

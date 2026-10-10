@@ -1,0 +1,92 @@
+# Second, deliberately tiny Gatus on pi01 (real hardware, not a pve01
+# guest). It watches only the machine the main Gatus runs on, so an outage of
+# portainer-pi still produces a Discord message.
+#
+# Besides that it checks dns01, which the main instance structurally cannot see.
+# Do not add anything else here; duplicated checks mean duplicated alerts.
+
+storage:
+  type: sqlite
+  path: /data/data.db
+
+ui:
+  title: Watchdog
+  header: Watchdog
+
+alerting:
+  discord:
+    webhook-url: ${DISCORD_WEBHOOK_URL}
+    title: ":eyes: Watchdog"
+    default-alert:
+      failure-threshold: 3
+      success-threshold: 2
+      send-on-resolved: true
+
+endpoints:
+  - name: portainer-pi
+    group: watchdog
+    url: tcp://192.0.2.11:22
+    conditions:
+      - "[CONNECTED] == true"
+    alerts:
+      - type: discord
+        description: "Host of the main Gatus is down. Everything on it is gone: Traefik, dns01, all stacks"
+        minimum-reminder-interval: 1h
+
+  - name: gatus-main
+    group: watchdog
+    url: tcp://192.0.2.11:8080
+    conditions:
+      - "[CONNECTED] == true"
+    alerts:
+      - type: discord
+        description: "Main Gatus is not answering. Nothing else is being monitored right now"
+        minimum-reminder-interval: 1h
+
+  # Proves Traefik routes and the wildcard certificate, not just that the host pings.
+  - name: traefik
+    group: watchdog
+    url: https://grafana.pve01.local.example.com/api/health
+    client:
+      dns-resolver: tcp://192.0.2.12:53 # dns02, local to this host
+    conditions:
+      - "[STATUS] == 200"
+    alerts:
+      - type: discord
+        description: "Traefik on portainer-pi is not serving. Every *.pve01 name is down"
+
+  # dns01 runs on portainer-pi and can only be checked from another machine:
+  # a container cannot reach the port its own host publishes.
+  - name: dns01-internal-zone
+    group: dns
+    url: 192.0.2.11
+    dns:
+      query-name: gitlab.pve01.local.example.com
+      query-type: A
+    conditions:
+      - "[DNS_RCODE] == NOERROR"
+      - "[BODY] == 192.0.2.11"
+    alerts:
+      - type: discord
+        description: "Internal names do not resolve: CI jobs and every *.pve01 name break"
+
+  - name: dns01-recursion
+    group: dns
+    url: 192.0.2.11
+    dns:
+      query-name: example.com
+      query-type: A
+    conditions:
+      - "[DNS_RCODE] == NOERROR"
+    alerts:
+      - type: discord
+
+  - name: dns01-blocking
+    group: dns
+    url: 192.0.2.11
+    interval: 15m
+    dns:
+      query-name: doubleclick.net
+      query-type: A
+    conditions:
+      - "[DNS_RCODE] == NXDOMAIN"

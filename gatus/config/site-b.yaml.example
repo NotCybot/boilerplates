@@ -1,0 +1,49 @@
+# Second site, reached over the VPN. Not loaded until renamed to site-b.yaml
+# (Gatus only reads *.yaml / *.yml). Replace the <...> placeholders first.
+#
+# If the tunnel drops, every check here fails at once. vpn-tunnel is the one
+# that says why; the others then only confirm it.
+
+endpoints:
+  - name: vpn-tunnel
+    group: site-b
+    url: tcp://<site-b-gateway-ip>:<port-reachable-only-through-the-tunnel>
+    conditions:
+      - "[CONNECTED] == true"
+      - "[RESPONSE_TIME] < 200"
+    alerts:
+      - type: discord
+
+  - name: site-b-dns-internal-zone
+    group: site-b
+    url: <site-b-technitium-ip>
+    dns:
+      query-name: <a-name-site-b-serves-locally>
+      query-type: A
+    conditions:
+      - "[DNS_RCODE] == NOERROR"
+      - "[BODY] == <its-ip>"
+    alerts:
+      - type: discord
+
+  - name: site-b-dns-recursion
+    group: site-b
+    url: <site-b-technitium-ip>
+    dns:
+      query-name: example.com
+      query-type: A
+    conditions:
+      - "[DNS_RCODE] == NOERROR"
+    alerts:
+      - type: discord
+
+  - name: site-b-proxmox
+    group: site-b
+    url: https://<site-b-proxmox-ip>:8006/
+    client:
+      insecure: true # Proxmox self-signed certificate
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY] == pat(*Proxmox Virtual Environment*)"
+    alerts:
+      - type: discord

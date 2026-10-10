@@ -1,0 +1,657 @@
+#tcp:
+# routers:
+#   minecraft:
+#     entryPoints:
+#       - "minetcp"
+#     rule: HostSNI(`*`)
+#      middlewares:
+#        - cloudflarewarp
+#        - crowdsec-bouncer
+#     tls: "false"
+#     service: minecraft
+
+
+tcp:
+  routers:
+    wazuh-agent:
+      entryPoints:
+        - wazuh-agent
+      rule: "HostSNI(`*`)"
+      middlewares:
+        - lan-only
+      service: wazuh-agent
+    wazuh-enroll:
+      entryPoints:
+        - wazuh-enroll
+      rule: "HostSNI(`*`)"
+      middlewares:
+        - lan-only
+      service: wazuh-enroll
+
+  middlewares:
+    lan-only:
+      ipAllowList:
+        sourceRange:
+          - "10.0.0.0/8"
+          - "192.168.0.0/16"
+          - "172.16.0.0/12"
+
+  services:
+    wazuh-agent:
+      loadBalancer:
+        servers:
+          - address: "192.0.2.29:1514"
+    wazuh-enroll:
+      loadBalancer:
+        servers:
+          - address: "192.0.2.29:1515"
+
+# services:
+#   minecraft:
+#     loadbalancer:
+#       servers:
+#          - address: "192.0.2.30:25565"
+#        passHostHeader: true
+
+#  middlewares:
+#    crowdsec-bouncer:
+#      forwardauth:
+#        address: http://bouncer-traefik:8080/api/v1/forwardAuth
+#        trustForwardHeader: true
+#
+#    cloudflarewarp:
+#        plugin:
+#            cloudflarewarp:
+#                disableDefault: "false"
+#                trustip:
+#                    - 2400:cb00::/32
+
+
+http:
+ #region routers
+  routers:
+    catch-all:
+      entryPoints:
+        - "https"
+      rule: "PathPrefix(`/`)"
+      priority: 1
+      middlewares:
+        - default-headers
+        - error-pages
+      tls:
+        certResolver: cloudflare
+      service: error-pages
+    pve01:
+      entryPoints:
+        - "https"
+      rule: "Host(`proxmox.pve01.local.example.com`)"
+      middlewares:
+        - default-headers
+        - https-redirectscheme
+      tls:
+        certResolver: cloudflare
+      service: pve01
+    
+    wazuh:
+      entryPoints:
+        - "https"
+      rule: "Host(`wazuh.example.com`)"
+      middlewares:
+        - default-headers
+        - https-redirectscheme
+      tls:
+        certResolver: cloudflare
+      service: wazuh
+
+
+    technitium-pi-https:
+      entryPoints:
+        - https
+      rule: Host(`dns02-ui.pve01.local.example.com`)
+      service: technitium-pi-web
+      tls:
+        certResolver: cloudflare
+
+    technitium-pi-doh:
+      entryPoints:
+        - https
+      rule: Host(`dns02-ui.pve01.local.example.com`) && Path(`/dns-query`)
+      service: technitium-pi-doh
+      tls:
+        certResolver: cloudflare
+      priority: 100
+    proxadguard:
+      entryPoints:
+        - "https"
+      rule: "Host(`adguard.pve01.local.example.com`)"
+      middlewares:
+        - default-headers
+        - https-redirectscheme
+#        - crowdsec-bouncer
+#        - authentik@file
+      tls:
+        certResolver: cloudflare
+      service: proxadguard
+    grafana:
+      entryPoints:
+        - "https"
+      rule: "Host(`grafana.pve01.local.example.com`)"
+      middlewares:
+        - default-headers
+        - https-redirectscheme
+      tls:
+        certResolver: cloudflare
+      service: grafana
+#    passbolt:
+#      entryPoints:
+#        - "https"
+#      rule: "Host(`pw.pve01.local.example.com`)"
+#      middlewares:
+#        - default-headers
+#        - https_redirectscheme
+#      tls: {}
+#      service: passbolt
+#    Synology:
+#      entryPoints:
+#       - "https"
+#     rule: "Host(`server.example.com`)"
+#     middlewares:
+#       - default-headers
+#       - https-redirectscheme
+#     tls: {}
+#     service: Synology
+#   bitwarden:
+#     entryPoints:
+#       - "https"
+#     rule: "Host(`bitwarden.example.com`)"
+#     middlewares:
+#       - default-headers
+#       - https-redirectscheme
+#     tls: {}
+#     service: bitwarden
+#    minecraft:
+#      entrypoints:
+#        - "udpep"
+#      rule: "Host(`mc.example.com`)"
+#      middlewares:
+#        - cloudflarewarp
+#        - crowdsec-bouncer
+#      service: minecraft
+#   bot:
+#     entryPoints:
+#       - "https"
+#     rule: "Host(`bot.example.com`)"
+#     middlewares:
+#       - default-headers
+#       - addbotprefix
+#       - authentik@file
+#        - addprefix-pihole
+#        - https-redirectscheme
+#     tls: {}
+#     service: bot
+#    homebridge:
+#      entryPoints:
+#        - "https"
+#      rule: "Host(`homebridge.local.example.com`)"
+#      middlewares:
+#        - default-headers
+#        - https-redirectscheme
+#      tls: {}
+#      service: homebridge
+    homeassistant:
+      # For Homeassistant config, check: https://www.home-assistant.io/integrations/http/#reverse-proxies
+      # This relies on Homeassistant using http. No certs are needed in the Homeassistant config.
+      entryPoints:
+        - "https"
+      rule: "Host(`homeassistant.pve01.local.example.com`)"
+      middlewares:
+        - default-headers
+        - https-redirectscheme
+      tls:
+        certResolver: cloudflare
+      service: homeassistant
+    uptimekuma:
+      entryPoints:
+        - "https"
+      rule: "Host(`uptimekuma.pve01.local.example.com`)"
+      middlewares:
+        - default-headers
+        - https-redirectscheme
+      tls:
+        certResolver: cloudflare
+      service: uptimekuma
+#    syncthing:
+#      entryPoints:
+#        - "https"
+#      rule: "Host(`syncthing.local.example.com`)"
+#      middlewares:
+#        - default-headers
+#        - https-redirectscheme
+#      tls: {}
+#      service: syncthing
+#    truenas:
+#      entryPoints:
+#        - "https"
+#      rule: "Host(`truenas.local.example.com`)"
+#      middlewares:
+#        - default-headers
+#        - https-redirectscheme
+#      tls: {}
+#      service: truenas
+#    plex:
+#      entryPoints:
+#        - "https"
+#      rule: "Host(`plex.local.example.com`)"
+#      middlewares:
+#        - default-headers
+#        - https-redirectscheme
+#      tls: {}
+#      service: plex
+#    minio:
+#      entryPoints:
+#        - "https"
+#      rule: "Host(`minio.local.example.com`)"
+#      middlewares:
+#        - default-headers
+#        - https-redirectscheme
+#      tls: {}
+#      service: minio
+#    rancher:
+#      entryPoints:
+#        - "https"
+#      rule: "Host(`rancher.local.example.com`)"
+#      middlewares:
+#        - default-headers
+#        - https-redirectscheme
+#      tls: {}
+#      service: rancher
+#    idrac:
+#     entryPoints:
+#       - "https"
+#     rule: "Host(`idrac.local.example.com`)"
+#     middlewares:
+#       - idrac
+#       - https-redirectscheme
+#     tls: {}
+#     service: idrac
+#    idrac-console:
+#      entryPoints:
+#        - "idrac" # REQUIRED for iDRAC virtual console: Create a new TCP entry point in traefik on port 5900
+#      rule: "Host(`idrac.local.example.com`)"
+#      middlewares:
+#        - idrac
+#        - https-redirectscheme
+#      tls: {}
+#      service: idrac-console
+#    opnsense:
+#      entryPoints:
+#        - "https"
+#      rule: "Host(`opnsense.local.example.com`)"
+#      middlewares:
+#        - default-headers
+#        - https-redirectscheme
+#      tls: {}
+#      service: opnsense
+#    pterodactyl:
+#      entryPoints:
+#        - "https"
+#      rule: "Host(`pterodactyl.local.example.com`)"
+#      middlewares:
+#        - default-headers
+#        - https-redirectscheme
+#      tls: {}
+#      service: pterodactyl
+#    seerr:
+#      entryPoints:
+#        - "https"
+#      rule: "Host(`seerr.pve01.local.example.com`)"
+#      middlewares:
+#        - default-headers
+#        - https-redirectscheme
+#      tls: {}
+#      service: seerr
+    #--- Services im servarrnetwork ---
+    sonarr-router:
+      rule: "Host(`sonarr.pve01.local.example.com`)"
+      entryPoints: "https"
+      service: sonarr-service
+      tls:
+        certResolver: cloudflare
+
+    radarr-router:
+      rule: "Host(`radarr.pve01.local.example.com`)"
+      entryPoints: "https"
+      service: radarr-service
+      tls:
+        certResolver: cloudflare
+
+    lidarr-router:
+      rule: "Host(`lidarr.pve01.local.example.com`)"
+      entryPoints: "https"
+      service: lidarr-service
+      tls:
+        certResolver: cloudflare
+
+    bazarr-router:
+      rule: "Host(`bazarr.pve01.local.example.com`)"
+      entryPoints: "https"
+      service: bazarr-service
+      tls:
+        certResolver: cloudflare
+
+    seerr-router:
+      rule: "Host(`seerr.pve01.local.example.com`)"
+      entryPoints: "https"
+      service: seerr-service
+      tls:
+        certResolver: cloudflare
+
+    #--- Services hinter Gluetun VPN ---
+    qbittorrent-router:
+      rule: "Host(`qbittorrent.pve01.local.example.com`)"
+      entryPoints: "https"
+      service: qbittorrent-service
+      tls:
+        certResolver: cloudflare
+
+    nzbget-router:
+      rule: "Host(`nzbget.pve01.local.example.com`)"
+      entryPoints: "https"
+      service: nzbget-service
+      tls:
+        certResolver: cloudflare
+
+    prowlarr-router:
+      rule: "Host(`prowlarr.pve01.local.example.com`)"
+      entryPoints: "https"
+      service: prowlarr-service
+      tls:
+        certResolver: cloudflare
+
+
+#endregion
+#region services
+  services:
+    pve01:
+      loadBalancer:
+        servers:
+          - url: "https://192.0.2.31:8006"
+        passHostHeader: true
+        serversTransport: pve01-insecure
+    wazuh:
+      loadBalancer:
+        servers:
+          - url: "http://192.0.2.29:5601"
+        passHostHeader: true
+    technitium-pi-web:
+      loadBalancer:
+        servers:
+          - url: "http://192.0.2.12:5380"
+
+    technitium-pi-doh:
+      loadBalancer:
+        servers:
+          - url: "http://192.0.2.12:80"
+    proxadguard:
+      loadBalancer:
+        servers:
+#         - url: "http://192.0.2.32:80"
+          - url: "http://192.0.2.12:83"
+        passHostHeader: true
+    grafana:
+      loadBalancer:
+        servers:
+          - url: "http://192.0.2.11:9091"
+        passHostHeader: true
+#    passbolt:
+#      loadBalancer:
+#        servers:
+#          - url: "http://192.0.2.12:8888"
+#        passHostHeaders: true
+#    Synology:
+#      loadBalancer:
+#        servers:
+#          - url: "https://192.0.2.33:5011"
+#        passHostHeader: true
+#    bitwarden:
+#      loadBalancer:
+#       servers:
+#         - url: "https://192.0.2.34"
+#       passHostHeader: true
+#   minecraft:
+#     loadbalancer:
+#       servers:
+#         - url: "192.0.2.30:25565"
+#   bot:
+#     loadBalancer:
+#       servers:
+#         - url: "http://192.0.2.35:80"
+#       passHostHeader: true
+#    homebridge:
+#      loadBalancer:
+#        servers:
+#          - url: "http://192.0.2.36:10999"
+#        passHostHeader: true
+    homeassistant:
+      loadBalancer:
+        servers:
+          - url: "http://192.0.2.12:8123"
+        passHostHeader: true
+    uptimekuma:
+      loadBalancer:
+        servers:
+          - url: "http://192.0.2.12:5555"
+        passHostHeader: true
+#    syncthing:
+#      loadBalancer:
+#        servers:
+#          - url: "https://192.0.2.37:8384"
+#        passHostHeader: true
+#    truenas:
+#      loadBalancer:
+#        servers:
+#          - url: "https://192.0.2.38"
+#        passHostHeader: true
+#    plex:
+#      loadBalancer:
+#        servers:
+#          - url: "https://192.0.2.39:32400"
+#        passHostHeader: true
+#    minio:
+#      loadBalancer:
+#        servers:
+#          - url: "https://192.0.2.40:9000/"
+#        passHostHeader: true
+#    rancher:
+#      loadBalancer:
+#        servers:
+#          - url: "https://192.0.2.41"
+#        passHostHeader: true
+#   idrac:
+#     loadBalancer:
+#       servers:
+#         - url: "https://192.0.2.42"
+#       passHostHeader: true
+#    idrac-console:
+#      loadBalancer:
+#        servers:
+#          - url: "https://192.0.2.43:5900"
+#        passHostHeader: true
+#    opnsense:
+#      loadBalancer:
+#        servers:
+#          - url: "https://192.0.2.44"
+#        passHostHeader: true
+#    pterodactyl:
+#      loadBalancer:
+#        servers:
+#          - url: "http://192.0.2.45:80"
+#        passHostHeader: true
+#    seerr:
+#      loadBalancer:
+#        servers:
+#          - url: "http://192.0.2.17:5055"
+#        passHostHeader: true
+    error-pages:
+      loadBalancer:
+        servers:
+          - url: "http://error-pages:80"
+        passHostHeader: true
+
+
+    #--- Service-Definitionen ---
+    sonarr-service:
+      loadBalancer:
+        servers:
+          - url: "http://192.0.2.17:8989"
+
+    radarr-service:
+      loadBalancer:
+        servers:
+          - url: "http://192.0.2.17:7878"
+
+    lidarr-service:
+      loadBalancer:
+        servers:
+          - url: "http://192.0.2.17:8686"
+
+    bazarr-service:
+      loadBalancer:
+        servers:
+          - url: "http://192.0.2.17:6767"
+
+    seerr-service:
+      loadBalancer:
+        servers:
+          - url: "http://192.0.2.17:5055"
+
+    #--- Service-Definitionen (hinter Gluetun VPN) ---
+    qbittorrent-service:
+      loadBalancer:
+        servers:
+          - url: "http://192.0.2.17:8080"
+
+    nzbget-service:
+      loadBalancer:
+        servers:
+          - url: "http://192.0.2.17:6789"
+
+    prowlarr-service:
+      loadBalancer:
+        servers:
+          - url: "http://192.0.2.17:9696"
+#endregion
+  middlewares:
+#    addbotprefix:
+#      addPrefix:
+#       prefix: "/quizmod"
+    addprefix-pihole:
+      addPrefix:
+        prefix: "/admin"
+    https-redirectscheme:
+      redirectScheme:
+        scheme: https
+        permanent: true
+
+    error-pages:
+      errors:
+        status:
+          - "400-599"
+        service: error-pages
+        query: "/{status}.html"
+
+    authentik:
+        forwardAuth:
+            address: http://authentik-ms-1:9000/outpost.goauthentik.io/auth/traefik
+            trustForwardHeader: true
+            authResponseHeaders:
+                - X-authentik-username
+                - X-authentik-groups
+                - X-authentik-entitlements
+                - X-authentik-email
+                - X-authentik-name
+                - X-authentik-uid
+                - X-authentik-jwt
+                - X-authentik-meta-jwks
+                - X-authentik-meta-outpost
+                - X-authentik-meta-provider
+                - X-authentik-meta-app
+                - X-authentik-meta-version
+
+          
+#    authentik:
+#      forwardauth:
+#        address: "http://auth.pve01.local.example.com/outpost.goauthentik.io/auth/traefik"
+#       trustForwardHeader: true
+#       authResponseHeaders:
+#         - X-authentik-username
+#         - X-authentik-groups
+#         - X-authentik-email
+#         - X-authentik-name
+#         - X-authentik-uid
+#         - X-authentik-jwt
+#         - X-authentik-meta-jwks
+#         - X-authentik-meta-outpost
+#         - X-authentik-meta-provider
+#         - X-authentik-meta-app
+#         - X-authentik-meta-version
+
+    default-headers:
+      headers:
+        contentTypeNosniff: true
+        customFrameOptionsValue: SAMEORIGIN
+        # Modern equivalent of X-Frame-Options. Only frame-ancestors, so no app breaks.
+        contentSecurityPolicy: "frame-ancestors 'self'"
+        referrerPolicy: strict-origin-when-cross-origin
+        # X-XSS-Protection: 0 — the legacy filter is removed from current browsers
+        # and used to introduce XSS itself. OWASP recommends disabling it explicitly.
+        customBrowserXSSValue: "0"
+        forceSTSHeader: true
+        stsIncludeSubdomains: true
+        stsSeconds: 31536000
+        customRequestHeaders:
+          X-Forwarded-Proto: https
+        # An empty value removes the header instead of setting it.
+        customResponseHeaders:
+          Server: ""
+          X-Powered-By: ""
+
+    lan-only:
+      ipAllowList:
+        sourceRange:
+        - "10.0.0.0/8"
+        - "192.168.0.0/16"
+        - "172.16.0.0/12"
+
+    secured:
+      chain:
+        middlewares:
+        - lan-only
+        - default-headers
+        - https-redirectscheme
+        - cloudflarewarp
+#       - crowdsec-bouncer
+
+    crowdsec-bouncer:
+      forwardauth:
+        address: http://bouncer-traefik:8080/api/v1/forwardAuth
+        trustForwardHeader: true
+
+    cloudflarewarp:
+        plugin:
+            cloudflarewarp:
+                disableDefault: "false"
+                trustip:
+                    - 2400:cb00::/32
+
+  serversTransports:
+    # Proxmox serves a self-signed certificate. Scoped here instead of globally.
+    pve01-insecure:
+      insecureSkipVerify: true
+
+tls:
+  options:
+    default:
+      minVersion: VersionTLS12
+      # Reject handshakes without a matching certificate (IP scans, unknown hosts).
+      sniStrict: true

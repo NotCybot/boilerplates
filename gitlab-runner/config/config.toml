@@ -1,0 +1,37 @@
+# The host has 4 cores and also runs GitLab itself. More parallel jobs only
+# starve GitLab, which every job needs for its clone. Short jobs like the
+# secret scan queue for seconds instead.
+concurrent = 3
+log_level = "warning"
+log_format = "json"
+check_interval = 5
+
+[[runners]]
+  name = "gitlab-runner-1"
+  url = "https://gitlab.pve01.local.example.com"
+  executor = "docker"
+  token = ""  # FIXME Add your registration token here
+  limit = 0
+  [runners.docker]
+    image = "alpine:latest"
+    # No job needs a Docker daemon. privileged would give every job full
+    # device access on the host for nothing.
+    privileged = false
+    # Per job container, so a Renovate run cannot take the whole box.
+    cpus = "2"
+    memory = "3g"
+    disable_cache = false
+    # Every image in use is pinned by digest, so a local copy is the right copy.
+    # Skips a registry round trip per job and keeps jobs running when Docker Hub
+    # is down or rate limiting.
+    pull_policy = ["if-not-present"]
+    # No docker.sock here: mounted into jobs it is root on the host for every
+    # MR pipeline.
+    volumes = ["/cache"]
+    # The host resolves through 127.0.0.1, where Technitium publishes port 53.
+    # Docker drops loopback nameservers and hands containers public DNS instead,
+    # so *.local.example.com does not resolve inside a job and cloning
+    # fails. Point job containers at Technitium by an address they can reach.
+    # Not 192.0.2.11: that is this host's own Technitium, and containers here
+    # time out on UDP/53 to their own host IP.
+    dns = ["192.0.2.12"]

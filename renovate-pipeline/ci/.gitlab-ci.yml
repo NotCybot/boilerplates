@@ -1,0 +1,24 @@
+# Renovate pipeline (GitLab CI). Thin platform layer; logic lives in ci/config.js.
+# Triggered by: pipeline schedule (cron) and manual "Run pipeline" (web).
+stages:
+  - test
+  - renovate
+
+include:
+  - component: $CI_SERVER_FQDN/components/security/secret-scan@~latest
+
+renovate:
+  stage: renovate
+  # Pin exact tag. Verify current stable: https://hub.docker.com/r/renovate/renovate/tags
+  image: renovate/renovate:44.145.3@sha256:ee075762d2fc365d2a081e9fcce8c46792576ff0b025ab2474528cbccb778e87
+  variables:
+    RENOVATE_CONFIG_FILE: ci/config.js
+    LOG_LEVEL: info
+    # RENOVATE_TOKEN, RENOVATE_ENDPOINT, GITHUB_COM_TOKEN come from masked CI/CD variables.
+    # GITHUB_COM_TOKEN: read-only github.com PAT for changelogs + rate limits (no repo write).
+    # Set RENOVATE_DRY_RUN=full as a CI/CD variable for a no-op test run.
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+    - if: '$CI_PIPELINE_SOURCE == "web"'
+  script:
+    - renovate

@@ -1,0 +1,50 @@
+services:
+  free-games-claimer:
+    container_name: free-games-claimer
+    image: ghcr.io/p-adamiec/free-games-claimer-remaster:v1.11@sha256:5bfe5c95b539c38d5aa7b72ec45eb5837661047a645ee2442a57eaa4561e48ac
+    mem_limit: 2g
+    pids_limit: 1024
+    restart: unless-stopped
+    networks:
+      - proxy
+    volumes:
+      - /etc/dockercompose/free-games-claimer/appdata:/fgc/data:rw
+    environment:
+      - TZ=${TZ}
+      - EMAIL=${FGC_EMAIL}
+      - EG_EMAIL=${EG_EMAIL}
+      - EG_PASSWORD=${EG_PASSWORD}
+      - EG_OTPKEY=${EG_OTPKEY}
+      - EG_PARENTALPIN=${EG_PARENTALPIN}
+      - GOG_EMAIL=${GOG_EMAIL}
+      - GOG_PASSWORD=${GOG_PASSWORD}
+      - GOG_NEWSLETTER=${GOG_NEWSLETTER}
+      - NOTIFY=${FGC_NOTIFY}
+      - NOTIFY_TITLE=${NOTIFY_TITLE}
+      - WIDTH=${WIDTH}
+      - HEIGHT=${HEIGHT}
+      - STEAM_USERNAME=${STEAM_USERNAME}
+      - STEAM_PASSWORD=${STEAM_PASSWORD}
+      - SHOW=${SHOW}
+      - FAB_ACCEPT_EULA=${FAB_ACCEPT_EULA}
+      - VNC_PASSWORD=${VNC_PASSWORD}
+      - VNC_URL=${VNC_URL}
+      - SCHEDULER_HOURS=${SCHEDULER_HOURS}
+      - SCHEDULER_TIMEZONE=${SCHEDULER_TIMEZONE}
+      - SCHEDULER_FIXED_TIMES=${SCHEDULER_FIXED_TIMES}
+      - STORES=${STORES}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.fgc.entrypoints=https"
+      - "traefik.http.routers.fgc.rule=Host(`fgc.pve01.local.example.com`)"
+      - "traefik.http.routers.fgc.tls=true"
+      - "traefik.http.routers.fgc.tls.certresolver=cloudflare"
+      - "traefik.http.routers.fgc.service=fgc"
+      - "traefik.http.services.fgc.loadbalancer.server.port=7080"
+      - "traefik.docker.network=proxy"
+      # Authentik Forward-Auth (Name an deine bestehende Middleware anpassen)
+      #- "traefik.http.routers.fgc.middlewares=authentik@docker"
+
+networks:
+  proxy:
+    external: true

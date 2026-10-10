@@ -1,0 +1,49 @@
+services:
+  gatus:
+    image: ghcr.io/twin/gatus:v5.37.0@sha256:094eb186e55235db367e90e9d56140e5897b7044c41de23cde4cc18e6da1242e
+    container_name: gatus
+    restart: unless-stopped
+    environment:
+      GATUS_CONFIG_PATH: /config
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:?required}
+      GATUS_HEARTBEAT_TOKEN: ${GATUS_HEARTBEAT_TOKEN:?required}
+    volumes:
+      # Relative path works with Dockhand (config comes from Git). Under Portainer,
+      # set GATUS_CONFIG_DIR=/etc/dockercompose/gatus/config and copy config/ there.
+      - ${GATUS_CONFIG_DIR:-./config}:/config:ro
+      - data:/data
+    # Docker drops loopback resolvers from the host's resolv.conf and falls back to
+    # public DNS, which cannot resolve the internal zone. Same issue as gitlab-runner!6.
+    # Only dns02: dns01 runs on this host and a container cannot reach the port its
+    # own host publishes. Listing it first cost every lookup a 5s timeout.
+    dns:
+      - 192.0.2.12
+    ports:
+      # Break-glass: status page by IP when DNS or Traefik is down.
+      - "8080:8080"
+    networks:
+      - proxy
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=proxy
+      - traefik.http.routers.gatus.entrypoints=https
+      - traefik.http.routers.gatus.rule=Host(`status.example.com`) || Host(`gatus.example.com`)
+      - traefik.http.routers.gatus.tls=true
+      # Outside the *.pve01 wildcard: certificate via DNS-01.
+      - traefik.http.routers.gatus.tls.certresolver=cloudflare
+      # The page has no login, so keep it off the internet at the proxy. Reading
+      # it exposes the internal layout: hosts, IPs, ports, what exists and what
+      # is down. Removing this middleware is the "publish it" step, and then the
+      # endpoints need hide-hostname/hide-url/hide-conditions.
+      - traefik.http.routers.gatus.middlewares=gatus-lan
+      - traefik.http.middlewares.gatus-lan.ipallowlist.sourcerange=10.0.0.0/8,192.168.0.0/16,172.16.0.0/12
+      - traefik.http.services.gatus.loadbalancer.server.port=8080
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  data:
+
+networks:
+  proxy:
+    external: true

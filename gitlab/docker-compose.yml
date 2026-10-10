@@ -1,0 +1,39 @@
+---
+services:
+  gitlab:
+    image: docker.io/gitlab/gitlab-ce:19.4.1-ce.0@sha256:9b33b45b9f42d176bada85ee5ecb81ddab7e506c435f44cd582206e284b2809c
+    container_name: gitlab
+    shm_size: '256m'
+    environment: {}
+    networks:
+      - proxy
+    volumes:
+      - /etc/dockercompose/gitlab/config:/etc/gitlab
+      - /etc/dockercompose/gitlab/logs:/var/log/gitlab
+      - /etc/dockercompose/gitlab/data:/var/opt/gitlab
+    ports:
+      - '2424:22'
+    labels:
+      - traefik.enable=true
+      - traefik.http.services.gitlab.loadbalancer.server.port=80
+      - traefik.http.services.gitlab.loadbalancer.server.scheme=http
+      - traefik.http.routers.gitlab.service=gitlab
+      - traefik.http.routers.gitlab.rule=Host(`gitlab.pve01.local.example.com`)
+      - traefik.http.routers.gitlab.entrypoints=https
+      - traefik.http.routers.gitlab.tls=true
+      - traefik.http.routers.gitlab.tls.certresolver=cloudflare
+    # <--
+    # --> (Optional) Enable Container Registry settings here...
+    #   - traefik.http.services.registry.loadbalancer.server.port=5678
+    #   - traefik.http.services.registry.loadbalancer.server.scheme=http
+    #   - traefik.http.routers.registry.service=registry
+    #   - traefik.http.routers.registry.rule=Host(`your-registry-fqdn`)
+    #   - traefik.http.routers.registry.entrypoints=websecure
+    #   - traefik.http.routers.registry.tls=true
+    #   - traefik.http.routers.registry.tls.certresolver=cloudflare
+    # <--
+    restart: unless-stopped
+
+networks:
+  proxy:
+    external: true

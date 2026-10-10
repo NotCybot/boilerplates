@@ -1,0 +1,29 @@
+services:
+  couchdb:
+    image: couchdb:3.5.2@sha256:5fc596110eac7f412173a7d9de14f70aa5d3e816790fb6e70642755d4a4cf464
+    networks: 
+      - proxy
+    container_name: couchdb-for-ols
+    # user: 1000:1000 #optional
+    environment:
+      - COUCHDB_USER=${COUCHDB_USER}
+      - COUCHDB_PASSWORD=${COUCHDB_PASSWORD}
+    volumes:
+      - /etc/dockercompose/couchdb/couchdb-data:/opt/couchdb/data
+      - /etc/dockercompose/couchdb/couchdb-etc:/opt/couchdb/etc/local.d
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.couchdb-secure.entrypoints=https"
+      - "traefik.http.routers.couchdb-secure.rule=Host(`couchdb.pve01.local.example.com`)"
+      - "traefik.http.routers.couchdb-secure.tls=true"
+      - "traefik.http.routers.couchdb-secure.tls.certresolver=cloudflare"
+      - "traefik.http.routers.couchdb-secure.service=couchdb"
+      - "traefik.http.services.couchdb.loadbalancer.server.port=5984"
+      - "traefik.docker.network=proxy"
+    ports:
+      - 5984:5984
+    restart: unless-stopped
+
+networks: 
+  proxy:
+    external: true

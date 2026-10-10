@@ -1,0 +1,62 @@
+version: "3"
+
+services:
+  vaultwarden:
+    container_name: vaultwarden
+    image: vaultwarden/server:1.37.4@sha256:efb3cde962015fcc036b2ea625242248611943b27212ebf4392841fb30fad055
+    mem_limit: 512m
+    pids_limit: 256
+    volumes:
+      - '/etc/dockercompose/vaultwarden/data:/data/'
+    restart: unless-stopped
+    networks:
+      proxy:
+    environment:
+      - DOMAIN=${DOMAIN}
+      - ADMIN_TOKEN=${ADMIN_TOKEN}
+      - SIGNUPS_ALLOWED=${SIGNUPS_ALLOWED:-false}
+      - SMTP_HOST=smtp.example.com
+      - SMTP_FROM=noreply@example.org
+      - SMTP_FROM_NAME=Vaultwarden
+      - SMTP_PORT=465
+      - SMTP_SECURITY=force_tls
+      - SMTP_USERNAME=${SMTP_USERNAME}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - SMTP_TIMEOUT=15
+      ## Enables push notifications (requires key and id from https://bitwarden.com/host)
+      ## Details about mobile client push notification:
+      ## - https://github.com/dani-garcia/vaultwarden/wiki/Enabling-Mobile-Client-push-notification
+      - PUSH_ENABLED=true
+      - PUSH_INSTALLATION_ID=${PUSH_INSTALLATION_ID}
+      - PUSH_INSTALLATION_KEY=${PUSH_INSTALLATION_KEY}
+      - PUSH_RELAY_URI=https://api.bitwarden.eu
+      - PUSH_IDENTITY_URI=https://identity.bitwarden.eu
+      # SSO
+      - SSO_ENABLED=true
+      - SSO_AUTHORITY=${SSO_AUTHORITY}
+      - SSO_CLIENT_ID=${SSO_CLIENT_ID}
+      - SSO_CLIENT_SECRET=${SSO_CLIENT_SECRET}
+      - SSO_SCOPES=openid profile email offline_access
+      - SSO_ALLOW_UNKNOWN_EMAIL_VERIFICATION=${SSO_ALLOW_UNKNOWN_EMAIL_VERIFICATION:-false}
+      - SSO_CLIENT_CACHE_EXPIRATION=0
+      - SSO_ONLY=false # Set to true to disable email+master password login and require SSO
+      - SSO_SIGNUPS_MATCH_EMAIL=true # Match first SSO login to existing account by email
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.vaultwarden-secure.entrypoints=https"
+      - "traefik.http.routers.vaultwarden-secure.rule=Host(`vaultwarden.pve01.local.example.com`)"
+      - "traefik.http.routers.vaultwarden-secure.tls=true"
+      - "traefik.http.routers.vaultwarden-secure.tls.certresolver=cloudflare"
+      - "traefik.http.routers.vaultwarden-secure.service=vaultwarden"
+      - "traefik.http.services.vaultwarden.loadbalancer.server.port=80"
+      - "traefik.docker.network=proxy"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+
+networks:
+  proxy:
+    external: true

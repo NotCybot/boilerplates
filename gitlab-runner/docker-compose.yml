@@ -1,0 +1,15 @@
+---
+services:
+  gitlab-runner:
+    image: docker.io/gitlab/gitlab-runner:alpine-v17.11.4@sha256:c1498a1dbb0a92c47173efde81eb98329913186ab40ec260a828a4800747c19b
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 256m
+    pids_limit: 256
+    container_name: gitlab-runner-1
+    volumes:
+      - /etc/dockercompose/gitlab-runner/config/config.toml:/etc/gitlab-runner/config.toml:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped

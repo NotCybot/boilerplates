@@ -1,0 +1,92 @@
+services:
+  coder:
+    # This MUST be stable for our documentation and
+    # other automations.
+    image: ghcr.io/coder/coder:v2.38.0@sha256:38a4cfc548b096484d6d1743e5f1a5af18301ed9a7ffde5150663822f9887026
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 2g
+    pids_limit: 512
+    #ports:
+    #  - "7080:7080"
+    networks: 
+      - proxy
+      - coder-internal
+    environment:
+      CODER_OIDC_IGNORE_EMAIL_VERIFIED: ${CODER_OIDC_IGNORE_EMAIL_VERIFIED:-true}
+      CODER_OIDC_ISSUER_URL: ${CODER_OIDC_ISSUER_URL}
+      CODER_OIDC_EMAIL_DOMAIN: example.com,example.org
+      CODER_OIDC_CLIENT_ID: ${CODER_OIDC_CLIENT_ID}
+      CODER_OIDC_CLIENT_SECRET: ${CODER_OIDC_CLIENT_SECRET}
+      CODER_OIDC_SIGN_IN_TEXT: Log in with authentik
+      CODER_OIDC_ICON_URL: ${CODER_OIDC_ICON_URL}
+      CODER_STRICT_TRANSPORT_SECURITY: 1
+      # Zentrale Postgres auf pg01. sslmode=require: pg01 laesst nur hostssl zu,
+      # das Zertifikat ist selbstsigniert, der Name wird dabei nicht geprueft.
+      CODER_PG_CONNECTION_URL: "postgresql://${POSTGRES_USER:-coder}:${POSTGRES_PASSWORD:?missing}@${DB_HOST:-192.0.2.10}:5432/${POSTGRES_DB:-coder}?sslmode=require"
+      CODER_HTTP_ADDRESS: "0.0.0.0:7080"
+      # You'll need to set CODER_ACCESS_URL to an IP or domain
+      # that workspaces can reach. This cannot be localhost
+      # or 127.0.0.1 for non-Docker templates!
+      CODER_ACCESS_URL: "https://coder.pve01.local.example.com"
+    # If the coder user does not have write permissions on
+    # the docker socket, you can uncomment the following
+    # lines and set the group ID to one that has write
+    # permissions on the docker socket.
+    group_add:
+      - "117" # docker group on host
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Run "docker volume rm coder_coder_home" to reset the dev tunnel url (https://abc.xyz.try.coder.app).
+      # This volume is not required in a production environment - you may safely remove it.
+      # Coder can recreate all the files it needs on restart.
+      - coder_home:/home/coder
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.coder-secure.entrypoints=https"
+      - "traefik.http.routers.coder-secure.rule=Host(`coder.pve01.local.example.com`)"
+      - "traefik.http.routers.coder-secure.tls=true"
+      - "traefik.http.routers.coder-secure.tls.certresolver=cloudflare"
+      - "traefik.http.routers.coder-secure.service=coder"
+      - "traefik.http.services.coder.loadbalancer.server.port=7080"
+      - "traefik.docker.network=proxy"
+
+  # Alte Stack-Datenbank, seit dem Umzug auf pg01 stillgelegt: Portainer kennt
+  # kein --profile, ein Service mit profiles startet dort also nicht. Service und
+  # Datenverzeichnis bleiben als Rollback-Pfad, bis ein Restore von pg01 geprueft ist.
+  database:
+    profiles:
+      - legacy
+    # Minimum supported version is 13.
+    # More versions here: https://hub.docker.com/_/postgres
+    image: "postgres:17@sha256:2d2b8998d31037bf721cfdf764d76ba74171b4fab3431b7f72c27c56ddbdf9e3"
+    # Uncomment the next two lines to allow connections to the database from outside the server.
+    #ports:
+    #  - "5432:5432"
+    networks: 
+      - coder-internal
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-username} # The PostgreSQL user (useful to connect to the database)
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password} # The PostgreSQL password (useful to connect to the database)
+      POSTGRES_DB: ${POSTGRES_DB:-coder} # The PostgreSQL default database (automatically created at first launch)
+    volumes:
+      - /etc/dockercompose/coder/coder_data:/var/lib/postgresql/data # Use "docker volume rm coder_coder_data" to reset Coder
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-username} -d ${POSTGRES_DB:-coder}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+networks: 
+  proxy:
+    external: true
+  coder-internal:
+    internal: true
+volumes:
+  coder_home:

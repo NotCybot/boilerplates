@@ -1,0 +1,391 @@
+# Gatus loads every *.yaml in this directory and merges them (lists are appended).
+# Global settings live here; add a file per site next to it.
+
+metrics: true # /metrics for Prometheus
+
+storage:
+  type: sqlite
+  path: /data/data.db
+
+ui:
+  title: Homelab Status
+  header: Homelab
+  default-sort-by: group
+  # Quick links. Only DNS02 is by IP and keeps working when Traefik is down.
+  buttons:
+    - name: Grafana
+      link: https://grafana.pve01.local.example.com
+    - name: Proxmox
+      link: https://proxmox.pve01.local.example.com
+    - name: GitLab
+      link: https://gitlab.pve01.local.example.com
+    - name: DNS02 (by IP)
+      link: http://192.0.2.12:5380
+
+alerting:
+  discord:
+    webhook-url: ${DISCORD_WEBHOOK_URL}
+    title: ":rotating_light: Homelab"
+    default-alert:
+      # 3 failed checks in a row: with the default 60s interval a service has to be
+      # down for ~3 minutes. Renovate restarts and container recreates stay silent.
+      failure-threshold: 3
+      success-threshold: 2
+      send-on-resolved: true
+
+endpoints:
+  # ---------------------------------------------------------------------------
+  # internet
+  # A full WAN outage cannot be alerted from inside: Discord is unreachable, and
+  # Gatus drops alerts it failed to send. These checks record outages in the
+  # history and alert on degradation (latency, one provider down). A real
+  # outage alert needs an observer outside this network, see README.
+  # ---------------------------------------------------------------------------
+  - name: cloudflare
+    group: internet
+    url: https://1.1.1.1/cdn-cgi/trace
+    interval: 30s
+    conditions:
+      - "[STATUS] == 200"
+      - "[RESPONSE_TIME] < 300"
+    alerts:
+      - type: discord
+
+  # Second provider without an alert: tells "Cloudflare is down" from "we are down".
+  - name: quad9
+    group: internet
+    url: tcp://9.9.9.9:53
+    interval: 30s
+    conditions:
+      - "[CONNECTED] == true"
+
+  # ---------------------------------------------------------------------------
+  # dns: dns02 is queried directly, not through the container resolver.
+  # "internal-zone" catches the class of bug from gitlab-runner!6,
+  # "recursion" checks the DoT forwarders, "blocking" checks the blocklists.
+  #
+  # dns01 lives in watchdog/: it runs on this very host, and a container cannot
+  # reach the port its own host publishes (verified, UDP 53 times out).
+  # Checking it from pi01 is also the only honest client's view.
+  # ---------------------------------------------------------------------------
+  - name: dns02-internal-zone
+    group: dns
+    url: 192.0.2.12
+    dns:
+      query-name: gitlab.pve01.local.example.com
+      query-type: A
+    conditions:
+      - "[DNS_RCODE] == NOERROR"
+      - "[BODY] == 192.0.2.11"
+    alerts:
+      - type: discord
+        description: "Internal names do not resolve: CI jobs and every *.pve01 name break"
+
+  - name: dns02-recursion
+    group: dns
+    url: 192.0.2.12
+    dns:
+      query-name: example.com
+      query-type: A
+    conditions:
+      - "[DNS_RCODE] == NOERROR"
+    alerts:
+      - type: discord
+
+  # Technitium drops blocking for a moment while it reloads its blocklists,
+  # hence the slow interval and the higher threshold.
+  - name: dns02-blocking
+    group: dns
+    url: 192.0.2.12
+    interval: 15m
+    dns:
+      query-name: doubleclick.net
+      query-type: A
+    conditions:
+      - "[DNS_RCODE] == NXDOMAIN"
+
+  # ---------------------------------------------------------------------------
+  # core: everything else depends on these
+  # ---------------------------------------------------------------------------
+  # One cert check instead of one per service: all *.pve01 hosts share the
+  # wildcard. Traefik renews at 30 days left, so under 10 days means renewal
+  # has been failing for about three weeks.
+  - name: wildcard-certificate
+    group: core
+    url: https://grafana.pve01.local.example.com/api/health
+    interval: 1h
+    conditions:
+      - "[CERTIFICATE_EXPIRATION] > 240h"
+    alerts:
+      - type: discord
+        description: "Traefik has not renewed the *.pve01 certificate. Check the Cloudflare token and traefik logs"
+        minimum-reminder-interval: 24h
+
+  # No [DOMAIN_EXPIRATION] check here: Gatus queries RDAP for the URL's hostname
+  # verbatim, and sure.example.com has no registration record of its own
+  # (RDAP answers 404; only the apex example.com does). The apex resolves
+  # nowhere, internally or publicly, so there is no URL to point an endpoint at.
+  # Bringing it back needs an A record for the apex plus a Traefik router.
+
+  - name: proxmox
+    group: core
+    url: https://proxmox.pve01.local.example.com/
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY] == pat(*Proxmox Virtual Environment*)"
+    alerts:
+      - type: discord
+
+  # /-/readiness only answers the monitoring allowlist and returns 404 otherwise.
+  - name: gitlab
+    group: core
+    url: https://gitlab.pve01.local.example.com/users/sign_in
+    conditions:
+      - "[STATUS] == 200"
+      - "[RESPONSE_TIME] < 3000"
+    alerts:
+      - type: discord
+
+  - name: authentik
+    group: core
+    url: https://auth.pve01.local.example.com/-/health/ready/
+    conditions:
+      - "[STATUS] == 200"
+    alerts:
+      - type: discord
+        description: "No SSO login anywhere. Local admin accounts still work"
+
+  - name: vaultwarden
+    group: core
+    url: https://vaultwarden.pve01.local.example.com/alive
+    conditions:
+      - "[STATUS] == 200"
+    alerts:
+      - type: discord
+
+  - name: grafana
+    group: core
+    url: https://grafana.pve01.local.example.com/api/health
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY].database == ok"
+    alerts:
+      - type: discord
+
+  - name: prometheus-pi
+    group: core
+    url: http://192.0.2.12:9090/-/ready
+    conditions:
+      - "[STATUS] == 200"
+    alerts:
+      - type: discord
+
+  # ---------------------------------------------------------------------------
+  # apps
+  # ---------------------------------------------------------------------------
+  # Direct IP: the Traefik route homeassistant.pve01 still points at the old
+  # 192.0.2.12:8123 and returns 502.
+  - name: home-assistant
+    group: apps
+    url: http://192.0.2.13:8123/manifest.json
+    conditions:
+      - "[STATUS] == 200"
+    alerts:
+      - type: discord
+
+  - name: coder
+    group: apps
+    url: https://coder.pve01.local.example.com/healthz
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY] == OK"
+    alerts:
+      - type: discord
+
+  - name: homarr
+    group: apps
+    url: https://homarr.pve01.local.example.com/api/health/live
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY].status == healthy"
+    alerts:
+      - type: discord
+
+  - name: open-webui
+    group: apps
+    url: https://chat.pve01.local.example.com/health
+    conditions:
+      - "[STATUS] == 200"
+    alerts:
+      - type: discord
+
+  # Not under the *.pve01 wildcard, so it gets its own certificate check.
+  - name: sure
+    group: apps
+    url: https://sure.example.com/up
+    conditions:
+      - "[STATUS] == 200"
+      - "[CERTIFICATE_EXPIRATION] > 240h"
+    alerts:
+      - type: discord
+        description: "Sure is down or its certificate expires within 10 days"
+        minimum-reminder-interval: 24h
+
+  # Every CouchDB endpoint requires auth. An "unauthorized" JSON body proves
+  # CouchDB itself answered, not a Traefik error page.
+  - name: couchdb
+    group: apps
+    url: https://couchdb.pve01.local.example.com/_up
+    conditions:
+      - "[STATUS] == 401"
+      - "[BODY].error == unauthorized"
+    alerts:
+      - type: discord
+
+  - name: free-games-claimer
+    group: apps
+    url: https://fgc.pve01.local.example.com/
+    interval: 5m
+    conditions:
+      - "[STATUS] == 200"
+
+  # ---------------------------------------------------------------------------
+  # media
+  # ---------------------------------------------------------------------------
+  - name: plex
+    group: media
+    url: http://192.0.2.14:32400/identity
+    conditions:
+      - "[STATUS] == 200"
+      - "[BODY] == pat(*MediaContainer*)"
+    alerts:
+      - type: discord
+
+  - name: tautulli
+    group: media
+    url: https://tautulli.pve01.local.example.com/status
+    conditions:
+      - "[BODY].result == success"
+    alerts:
+      - type: discord
+
+  - name: sonarr
+    group: media
+    url: https://sonarr.pve01.local.example.com/ping
+    conditions:
+      - "[BODY].status == OK"
+    alerts:
+      - type: discord
+
+  - name: radarr
+    group: media
+    url: https://radarr.pve01.local.example.com/ping
+    conditions:
+      - "[BODY].status == OK"
+    alerts:
+      - type: discord
+
+  - name: lidarr
+    group: media
+    url: https://lidarr.pve01.local.example.com/ping
+    conditions:
+      - "[BODY].status == OK"
+    alerts:
+      - type: discord
+
+  - name: prowlarr
+    group: media
+    url: https://prowlarr.pve01.local.example.com/ping
+    conditions:
+      - "[BODY].status == OK"
+    alerts:
+      - type: discord
+
+  - name: bazarr
+    group: media
+    url: https://bazarr.pve01.local.example.com/api/system/ping
+    conditions:
+      - "[BODY].status == OK"
+    alerts:
+      - type: discord
+
+  - name: qbittorrent
+    group: media
+    url: https://qbittorrent.pve01.local.example.com/
+    conditions:
+      - "[STATUS] == 200"
+    alerts:
+      - type: discord
+
+  # ---------------------------------------------------------------------------
+  # hosts: VMs, LXCs and the NAS. SSH port as a cheap "machine is up" signal
+  # that does not depend on any container on it. portainer-pi is missing on
+  # purpose: Gatus runs there and cannot report its own host being down.
+  # ---------------------------------------------------------------------------
+  - name: pi01
+    group: hosts
+    url: tcp://192.0.2.12:22
+    interval: 2m
+    conditions:
+      - "[CONNECTED] == true"
+    alerts:
+      - type: discord
+
+  - name: traefik-entry
+    group: hosts
+    url: tcp://192.0.2.15:22
+    interval: 2m
+    conditions:
+      - "[CONNECTED] == true"
+    alerts:
+      - type: discord
+
+  - name: cache
+    group: hosts
+    url: tcp://192.0.2.16:22
+    interval: 2m
+    conditions:
+      - "[CONNECTED] == true"
+    alerts:
+      - type: discord
+
+  - name: lxc-plex
+    group: hosts
+    url: tcp://192.0.2.14:22
+    interval: 2m
+    conditions:
+      - "[CONNECTED] == true"
+    alerts:
+      - type: discord
+
+  - name: arr-stack
+    group: hosts
+    url: tcp://192.0.2.17:22
+    interval: 2m
+    conditions:
+      - "[CONNECTED] == true"
+    alerts:
+      - type: discord
+
+  - name: nas01
+    group: hosts
+    url: tcp://192.0.2.18:22
+    interval: 2m
+    conditions:
+      - "[CONNECTED] == true"
+    alerts:
+      - type: discord
+
+# Jobs report in instead of being polled. No push within the interval = alert.
+# Push: POST /api/v1/endpoints/heartbeats_<name>/external?success=true
+#       with header "Authorization: Bearer $GATUS_HEARTBEAT_TOKEN"
+external-endpoints:
+  - name: renovate-nightly
+    group: heartbeats
+    token: ${GATUS_HEARTBEAT_TOKEN}
+    heartbeat:
+      interval: 26h
+    alerts:
+      - type: discord
+        description: "Renovate did not report in for 26h. Check renovate-pipeline schedules"
+        minimum-reminder-interval: 24h
